@@ -106,5 +106,5 @@ with col2:
     st.subheader("3. Análise e Sugestões do Mentor")
     if 'resposta_agente' in st.session_state:
         st.markdown(st.session_state.resposta_agente)
-    else:
+    else:.\env\Scripts\activate
         st.info("A análise do seu projeto aparecerá aqui.")
