@@ -80,10 +80,12 @@ def carregar_e_processar_documentos(api_key):
 
 # --- INTERFACE GRÁFICA DA APLICAÇÃO ---
 
-st.set_page_config(page_title="Consultor de Aprendizagem Ativa", page_icon="🎓", layout="wide")
+# Título que aparece na ABA do navegador
+st.set_page_config(page_title="CHATMAX", page_icon="🎓", layout="wide")
 
-st.title("🎓 Consultor de Design de Aprendizagem Ativa")
-st.markdown("Um parceiro de IA treinado na filosofia pedagógica da sua instituição.")
+# Título e subtítulo que aparecem NA PÁGINA
+st.title("🎓 CHATMAX")
+st.markdown("Seu Consultor de Design de Aprendizagem Ativa da UNIMAX.")
 
 openai_api_key = st.secrets.get("OPENAI_API_KEY")
 
