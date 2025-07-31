@@ -1,7 +1,7 @@
 import streamlit as st
 import openai
 
-# --- PROMPT 'BLOOMMENTOR 2.1' (Nosso motor refinado) ---
+# --- PROMPT 'BLOOMMENTOR 2.1' (Nosso motor continua o mesmo) ---
 PROMPT_SISTEMA_BLOOM_MENTOR = """
 Persona: Você é BloomMentor, um mentor pedagógico estratégico. Sua especialidade é a Taxonomia de Bloom, metodologias ativas e o design de experiências de aprendizagem de alto impacto. Sua missão é elevar a prática pedagógica através de uma parceria intelectual rigorosa e construtiva. Sua abordagem é a de um **Arquiteto Pedagógico**: você não apenas sugere uma reforma, mas analisa a fundação (o nível de Bloom), projeta uma nova estrutura (a atividade aprimorada) e verifica a integridade do projeto (a análise crítica).
 
@@ -41,12 +41,10 @@ Caixa de Ferramentas de Análise Crítica (Use uma por vez):
 ---
 """
 
-# --- FUNÇÃO DE CHAMADA À API (Agora recebe o histórico da conversa) ---
+# --- FUNÇÃO DE CHAMADA À API (Permanece a mesma) ---
 def chamar_bloom_mentor(api_key, conversation_history):
     try:
         openai.api_key = api_key
-        
-        # O histórico da conversa já inclui a persona do sistema como primeira mensagem
         response = openai.chat.completions.create(
             model="gpt-4o",
             messages=conversation_history,
@@ -54,44 +52,40 @@ def chamar_bloom_mentor(api_key, conversation_history):
         )
         return response.choices[0].message.content
     except openai.AuthenticationError:
-        return "Erro de Autenticação: A chave da API da OpenAI fornecida não é válida. Verifique a chave e tente novamente."
+        # Esta mensagem agora seria para você, a dona da chave, se ela for inválida
+        return "Erro de Autenticação: A chave da API da OpenAI configurada nos 'Secrets' do Streamlit não é válida."
     except Exception as e:
         return f"Ocorreu um erro inesperado: {e}"
 
-# --- NOVA INTERFACE GRÁFICA CONVERSACIONAL ---
+# --- INTERFACE FINAL (Modo Demonstração) ---
 
 st.set_page_config(page_title="BloomMentor Chat", page_icon="🎓", layout="centered")
 
 st.title("🎓 BloomMentor Chat")
 st.markdown("Inicie uma conversa com seu Arquiteto Pedagógico.")
 
-# Configuração da chave da API na barra lateral
-with st.sidebar:
-    st.header("Configuração")
-    api_key_input = st.text_input(
-        "Insira sua chave da API da OpenAI:",
-        type="password",
-        placeholder="sk-...",
-        help="Sua chave é necessária para processar a solicitação e não é armazenada."
-    )
+# Tenta pegar a chave da API dos 'Secrets' do Streamlit
+# Este é o único lugar onde a chave é manuseada agora.
+openai_api_key = st.secrets.get("OPENAI_API_KEY")
 
-# 1. INICIALIZAÇÃO DA MEMÓRIA DO CHAT
+# INICIALIZAÇÃO DA MEMÓRIA DO CHAT
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {"role": "system", "content": PROMPT_SISTEMA_BLOOM_MENTOR}
     ]
 
-# 2. EXIBIÇÃO DO HISTÓRICO DA CONVERSA
+# EXIBIÇÃO DO HISTÓRICO DA CONVERSA
 for message in st.session_state.messages:
     if message["role"] != "system":
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-# 3. CAMPO DE ENTRADA PARA NOVA MENSAGEM
+# CAMPO DE ENTRADA PARA NOVA MENSAGEM
 if prompt := st.chat_input("Qual o seu desafio pedagógico hoje?"):
     
-    if not api_key_input:
-        st.error("Por favor, insira sua chave da API na barra lateral para começar.")
+    # A única verificação agora é se a chave foi encontrada nos Secrets.
+    if not openai_api_key:
+        st.error("A chave da API da OpenAI não foi configurada corretamente nos 'Secrets' desta aplicação.")
     else:
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
@@ -99,8 +93,8 @@ if prompt := st.chat_input("Qual o seu desafio pedagógico hoje?"):
 
         with st.chat_message("assistant"):
             with st.spinner("BloomMentor está formulando uma resposta..."):
-                response = chamar_bloom_mentor(api_key_input, st.session_state.messages)
+                # A função agora usa a chave que foi lida dos Secrets
+                response = chamar_bloom_mentor(openai_api_key, st.session_state.messages)
                 st.markdown(response)
         
-        st.session_state.messages.append({"role": "assistant", "content": response}) 
-        
+        st.session_state.messages.append({"role": "assistant", "content": response})
