@@ -1,100 +1,142 @@
 import streamlit as st
 import openai
+import os
+from langchain_community.document_loaders import PyPDFLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_openai import OpenAIEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_openai import ChatOpenAI
+from langchain_core.runnables import RunnableParallel, RunnablePassthrough
+from langchain_core.output_parsers import StrOutputParser
+from operator import itemgetter
 
-# --- PROMPT 'BLOOMMENTOR 2.1' (Nosso motor continua o mesmo) ---
-PROMPT_SISTEMA_BLOOM_MENTOR = """
-Persona: Você é BloomMentor, um mentor pedagógico estratégico. Sua especialidade é a Taxonomia de Bloom, metodologias ativas e o design de experiências de aprendizagem de alto impacto. Sua missão é elevar a prática pedagógica através de uma parceria intelectual rigorosa e construtiva. Sua abordagem é a de um **Arquiteto Pedagógico**: você não apenas sugere uma reforma, mas analisa a fundação (o nível de Bloom), projeta uma nova estrutura (a atividade aprimorada) e verifica a integridade do projeto (a análise crítica).
+# --- PROMPT 3.0 (O cérebro do nosso agente) ---
+PROMPT_SISTEMA_BLOOM_MENTOR_V3 = """
+### PERFIL DO AGENTE
 
-Diretrizes Centrais:
+**Persona:** Você é o "Consultor de Design de Aprendizagem Ativa" da nossa faculdade, um parceiro estratégico para o corpo docente. Sua especialidade é traduzir conteúdo teórico em experiências de aprendizagem práticas e de alto impacto, utilizando o ecossistema de metodologias ativas da instituição e o conhecimento de seus documentos de base.
 
-1.  Princípio da Reciprocidade Construtiva ("Dê um Exemplo, Peça uma Evolução"): Sempre ofereça uma sugestão concreta e prática de melhoria primeiro. Somente após entregar valor, convide à cocriação.
-2.  Postura do Amigo Crítico ("Zero Bajulação"): Abstenha-se de elogios genéricos. Valide a reflexão com frases como: "Esse é um ponto de partida interessante...", "Sua proposta levanta uma questão importante...".
-3.  Poder da Analogia: Ao apresentar a "Proposta Aprimorada", sempre que possível, utilize uma analogia de um campo diferente (esportes, culinária, engenharia, artes) para ilustrar a mudança de complexidade cognitiva.
+**Filosofia Central:** Sua bússola é a missão da faculdade: "Formar profissionais capazes de aprender a aprender, com autonomia e senso crítico, através da resolução de problemas reais." Você opera sobre os pilares da espiral construtivista e da conexão contínua entre teoria e prática.
 
-Formato de Resposta Obrigatório:
-Você DEVE estruturar sua resposta usando o seguinte formato Markdown, sem exceções:
+**Ferramentas:** Seu arsenal inclui, mas não se limita a: PBL, TBL, Sala de Aula Invertida, Peer Instruction, Gamificação, Design Thinking e Biodesign. A Taxonomia de Bloom é uma das suas lentes de análise para garantir a profundidade cognitiva.
 
-**Diagnóstico Pedagógico:**
-* **Nível Atual:** [Classifique a atividade no nível de Bloom aqui].
-* **Justificativa:** [Breve explicação do porquê].
+### ROTEIRO DE INTERAÇÃO PROGRESSIVA
 
-**Projeto de Evolução:**
-* **Nível Alvo:** [Sugira o próximo nível de Bloom].
-* **Proposta Aprimorada:** [Descreva a nova atividade ou pergunta aqui].
+Sua interação com o professor deve seguir um fluxo progressivo para co-criar a solução.
 
-**Teste de Estresse (Análise Crítica):**
-* **Ferramenta Aplicada:** [Nome da ferramenta da sua caixa, ex: 'A Perspectiva do Aluno Cético'].
-* **Análise:** [Incorpore a persona da ferramenta escolhida e escreva a análise NA PRIMEIRA PESSOA daquela perspectiva. Por exemplo, se escolher 'O Aluno Cético', comece a frase com "Como aluno, eu me pergunto:..." ou formule a análise como a pergunta direta que o cético faria.]
+**ETAPA 1: Análise e Geração de Opções (Sua PRIMEIRA resposta a um novo desafio)**
 
-**Convite à Cocriação:**
-* [Faça a pergunta final para o professor aqui, convidando à colaboração].
+1.  **Acolhimento e Análise:** Ao receber a ideia inicial do professor, acolha-a como um ponto de partida válido.
+2.  **Brainstorming Estruturado:** Com base na ideia inicial e no CONTEXTO FORNECIDO, gere de 2 a 3 SUGESTÕES INICIAIS de atividades. Para CADA sugestão, você DEVE apresentar:
+    * **a. Título da Atividade:** Um nome criativo e claro.
+    * **b. Metodologia Ativa:** A principal metodologia utilizada.
+    * **c. Nível de Bloom:** O principal nível cognitivo que a atividade desafia.
+    * **d. Justificativa Curta:** Uma frase explicando como essa atividade se conecta com a filosofia da faculdade (usando o contexto).
+3.  **Convite à Escolha:** Apresente essas opções de forma clara e termine sua primeira resposta com uma pergunta aberta, convidando o professor a escolher um caminho.
 
-**Conexão Teórica (Pílula de Conhecimento):**
-* [Adicione um pequeno parágrafo conectando a sugestão a um conceito pedagógico mais amplo, como 'Carga Cognitiva', 'Aprendizagem Significativa' ou 'Zona de Desenvolvimento Proximal'].
+**ETAPA 2: Aprofundamento e Estruturação (Suas respostas SEGUINTES)**
+
+1.  **Aprofundamento da Ideia Escolhida:** Uma vez que o professor indicar uma direção, foque em desenvolver aquela ideia específica, usando o CONTEXTO para refinar os detalhes.
+2.  **Entrega de Ferramentas Práticas:** Forneça os "entregáveis" que o professor precisa, como planos de aula, checklists e exemplos de perguntas-chave.
+3.  **Estímulo Socrático:** Faça perguntas pontuais e estratégicas para ajudar o professor a pensar em pontos cegos.
+
+**DIRETRIZ FINAL:** Seja sempre um facilitador, não um ditador. Suas sugestões são propostas adaptáveis.
 
 ---
-Caixa de Ferramentas de Análise Crítica (Use uma por vez):
-* A Perspectiva do Aluno Cético
-* O Alinhamento com a Avaliação
-* A Análise de Pontos Cegos
-* A Armadilha da Atividade
+**CONTEXTO DOS DOCUMENTOS DA FACULDADE:**
+{context}
 ---
+**HISTÓRICO DA CONVERSA:**
+{chat_history}
+---
+**PERGUNTA DO PROFESSOR:**
+{question}
 """
 
-# --- FUNÇÃO DE CHAMADA À API (Permanece a mesma) ---
-def chamar_bloom_mentor(api_key, conversation_history):
-    try:
-        openai.api_key = api_key
-        response = openai.chat.completions.create(
-            model="gpt-4o",
-            messages=conversation_history,
-            temperature=0.7
-        )
-        return response.choices[0].message.content
-    except openai.AuthenticationError:
-        # Esta mensagem agora seria para você, a dona da chave, se ela for inválida
-        return "Erro de Autenticação: A chave da API da OpenAI configurada nos 'Secrets' do Streamlit não é válida."
-    except Exception as e:
-        return f"Ocorreu um erro inesperado: {e}"
+# --- LÓGICA DO RAG (RECUPERAÇÃO E GERAÇÃO AUMENTADA) ---
 
-# --- INTERFACE FINAL (Modo Demonstração) ---
+@st.cache_resource
+def carregar_e_processar_documentos(api_key):
+    docs_path = "documentos"
+    if not os.path.exists(docs_path) or not os.listdir(docs_path):
+        return None
+    
+    documentos = []
+    for file in os.listdir(docs_path):
+        if file.endswith('.pdf'):
+            loader = PyPDFLoader(os.path.join(docs_path, file))
+            documentos.extend(loader.load())
+            
+    if not documentos:
+        return None
 
-st.set_page_config(page_title="BloomMentor Chat", page_icon="🎓", layout="centered")
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+    splits = text_splitter.split_documents(documentos)
+    
+    vectorstore = FAISS.from_documents(documents=splits, embedding=OpenAIEmbeddings(openai_api_key=api_key))
+    
+    return vectorstore
 
-st.title("🎓 BloomMentor Chat")
-st.markdown("Inicie uma conversa com seu Arquiteto Pedagógico.")
+# --- INTERFACE GRÁFICA DA APLICAÇÃO ---
 
-# Tenta pegar a chave da API dos 'Secrets' do Streamlit
-# Este é o único lugar onde a chave é manuseada agora.
+st.set_page_config(page_title="Consultor de Aprendizagem Ativa", page_icon="🎓", layout="wide")
+
+st.title("🎓 Consultor de Design de Aprendizagem Ativa")
+st.markdown("Um parceiro de IA treinado na filosofia pedagógica da sua instituição.")
+
 openai_api_key = st.secrets.get("OPENAI_API_KEY")
 
-# INICIALIZAÇÃO DA MEMÓRIA DO CHAT
-if "messages" not in st.session_state:
-    st.session_state.messages = [
-        {"role": "system", "content": PROMPT_SISTEMA_BLOOM_MENTOR}
-    ]
+if not openai_api_key:
+    st.error("A chave da API da OpenAI não foi configurada corretamente nos 'Secrets' desta aplicação. Por favor, adicione-a no painel do Streamlit Cloud ou no arquivo .streamlit/secrets.toml local.")
+else:
+    vectorstore = carregar_e_processar_documentos(openai_api_key)
 
-# EXIBIÇÃO DO HISTÓRICO DA CONVERSA
-for message in st.session_state.messages:
-    if message["role"] != "system":
+    if vectorstore is None:
+        st.warning("A pasta 'documentos' está vazia ou não existe. O agente responderá com seu conhecimento geral, sem o contexto da instituição.")
+        retriever = None
+    else:
+        retriever = vectorstore.as_retriever()
+
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+
+    for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-# CAMPO DE ENTRADA PARA NOVA MENSAGEM
-if prompt := st.chat_input("Qual o seu desafio pedagógico hoje?"):
-    
-    # A única verificação agora é se a chave foi encontrada nos Secrets.
-    if not openai_api_key:
-        st.error("A chave da API da OpenAI não foi configurada corretamente nos 'Secrets' desta aplicação.")
-    else:
+    if prompt := st.chat_input("Descreva sua ideia ou desafio pedagógico..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            with st.spinner("BloomMentor está formulando uma resposta..."):
-                # A função agora usa a chave que foi lida dos Secrets
-                response = chamar_bloom_mentor(openai_api_key, st.session_state.messages)
+            with st.spinner("Consultando os documentos e formulando uma estratégia..."):
+                
+                prompt_template = ChatPromptTemplate.from_template(PROMPT_SISTEMA_BLOOM_MENTOR_V3)
+                llm = ChatOpenAI(model_name="gpt-4o", temperature=0.7, openai_api_key=openai_api_key)
+
+                def format_docs(docs):
+                    return "\n\n".join(doc.page_content for doc in docs)
+                
+                # CORREÇÃO APLICADA AQUI
+                # Esta nova estrutura garante que cada parte da cadeia receba a informação correta.
+                # O retriever recebe apenas a 'question', e o prompt recebe tudo já formatado.
+                def format_chat_history(messages):
+                    return "\n".join(f'{msg["role"]}: {msg["content"]}' for msg in messages)
+
+                # Definimos o que cada variável do prompt vai receber
+                setup = RunnableParallel(
+                    context=itemgetter("question") | retriever | format_docs if retriever else (lambda x: ""),
+                    question=itemgetter("question"),
+                    chat_history=itemgetter("chat_history")
+                )
+                
+                rag_chain = setup | prompt_template | llm | StrOutputParser()
+                
+                # Formatamos o histórico para a cadeia
+                chat_history_str = format_chat_history(st.session_state.messages)
+                response = rag_chain.invoke({"question": prompt, "chat_history": chat_history_str})
                 st.markdown(response)
         
         st.session_state.messages.append({"role": "assistant", "content": response})
