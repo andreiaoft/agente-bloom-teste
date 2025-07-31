@@ -41,16 +41,15 @@ Caixa de Ferramentas de Análise Crítica (Use uma por vez):
 ---
 """
 
-# --- FUNÇÃO DE CHAMADA À API DA OPENAI (A mesma que testamos) ---
-def chamar_bloom_mentor(api_key, atividade_do_professor):
+# --- FUNÇÃO DE CHAMADA À API (Agora recebe o histórico da conversa) ---
+def chamar_bloom_mentor(api_key, conversation_history):
     try:
         openai.api_key = api_key
+        
+        # O histórico da conversa já inclui a persona do sistema como primeira mensagem
         response = openai.chat.completions.create(
             model="gpt-4o",
-            messages=[
-                {"role": "system", "content": PROMPT_SISTEMA_BLOOM_MENTOR},
-                {"role": "user", "content": atividade_do_professor}
-            ],
+            messages=conversation_history,
             temperature=0.7
         )
         return response.choices[0].message.content
@@ -59,52 +58,49 @@ def chamar_bloom_mentor(api_key, atividade_do_professor):
     except Exception as e:
         return f"Ocorreu um erro inesperado: {e}"
 
-# --- INTERFACE GRÁFICA DA APLICAÇÃO (STREAMLIT) ---
+# --- NOVA INTERFACE GRÁFICA CONVERSACIONAL ---
 
-# Configuração da página
-st.set_page_config(page_title="BloomMentor", page_icon="🎓", layout="wide")
+st.set_page_config(page_title="BloomMentor Chat", page_icon="🎓", layout="centered")
 
-# Título e descrição
-st.title("🎓 BloomMentor: Seu Arquiteto Pedagógico")
-st.markdown("Insira a descrição de uma atividade, objetivo de aprendizagem ou desafio pedagógico, e receba uma análise crítica e construtiva para elevar sua prática.")
+st.title("🎓 BloomMentor Chat")
+st.markdown("Inicie uma conversa com seu Arquiteto Pedagógico.")
 
-# Colunas para organizar a interface
-col1, col2 = st.columns(2)
-
-with col1:
-    # Área para inserir a chave da API
-    st.subheader("1. Configuração")
+# Configuração da chave da API na barra lateral
+with st.sidebar:
+    st.header("Configuração")
     api_key_input = st.text_input(
-        "Insira sua chave da API da OpenAI aqui:",
+        "Insira sua chave da API da OpenAI:",
         type="password",
         placeholder="sk-...",
-        help="Sua chave é necessária para processar a solicitação e não é armazenada. Obtenha em platform.openai.com"
+        help="Sua chave é necessária para processar a solicitação e não é armazenada."
     )
 
-    # Área para o input do professor
-    st.subheader("2. Descreva sua Ideia ou Desafio")
-    user_input = st.text_area(
-        "Cole aqui sua ideia para a atividade:",
-        height=250,
-        placeholder="Ex: 'Para minha aula de história, pensei em pedir aos alunos para fazerem um resumo sobre a Revolução Francesa.'"
-    )
+# 1. INICIALIZAÇÃO DA MEMÓRIA DO CHAT
+if "messages" not in st.session_state:
+    st.session_state.messages = [
+        {"role": "system", "content": PROMPT_SISTEMA_BLOOM_MENTOR}
+    ]
 
-    # Botão para gerar a análise
-    if st.button("Analisar com BloomMentor", type="primary"):
-        if not api_key_input:
-            st.error("Por favor, insira sua chave da API da OpenAI para continuar.")
-        elif not user_input:
-            st.error("Por favor, descreva sua ideia ou desafio no campo de texto.")
-        else:
-            # Mostra uma mensagem de "carregando" enquanto processa
-            with st.spinner("O Arquiteto Pedagógico está analisando seu projeto..."):
-                # Armazena a resposta na sessão do usuário
-                st.session_state.resposta_agente = chamar_bloom_mentor(api_key_input, user_input)
+# 2. EXIBIÇÃO DO HISTÓRICO DA CONVERSA
+for message in st.session_state.messages:
+    if message["role"] != "system":
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
 
-with col2:
-    # Área para exibir a resposta
-    st.subheader("3. Análise e Sugestões do Mentor")
-    if 'resposta_agente' in st.session_state:
-        st.markdown(st.session_state.resposta_agente)
-    else:.\env\Scripts\activate
-        st.info("A análise do seu projeto aparecerá aqui.")
+# 3. CAMPO DE ENTRADA PARA NOVA MENSAGEM
+if prompt := st.chat_input("Qual o seu desafio pedagógico hoje?"):
+    
+    if not api_key_input:
+        st.error("Por favor, insira sua chave da API na barra lateral para começar.")
+    else:
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        with st.chat_message("assistant"):
+            with st.spinner("BloomMentor está formulando uma resposta..."):
+                response = chamar_bloom_mentor(api_key_input, st.session_state.messages)
+                st.markdown(response)
+        
+        st.session_state.messages.append({"role": "assistant", "content": response}) 
+        
